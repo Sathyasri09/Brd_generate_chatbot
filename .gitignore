@@ -1,0 +1,19 @@
+# Environment variables
+.env
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
+# Document artifacts
+*.docx
+generated_brd_*.docx
+generated_ts_*.docx
+
+# Brain/Backups
+brain/
+backup_*/

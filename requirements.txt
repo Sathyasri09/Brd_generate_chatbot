@@ -1,0 +1,8 @@
+langgraph
+chainlit
+langchain-google-genai
+langchain-openai
+python-docx
+htmldocx
+langchain-core
+pydantic
