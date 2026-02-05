@@ -74,8 +74,8 @@ def convert_html_to_docx(html_content: str, output_filename: str = "generated_br
     for table in doc.tables:
         table.style = 'Table Grid'
     
-    # Save to directory OUTSIDE the project root to prevent Chainlit watch/reload loop
-    output_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "brd_outputs"))
+    # Save to directory in the project root but ignored by Chainlit watcher
+    output_dir = os.path.abspath(os.path.join(os.getcwd(), "brd_outputs"))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
