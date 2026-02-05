@@ -82,82 +82,80 @@ def refine_node(state: AgentState) -> AgentState:
 
 def gather_info_node(state: AgentState) -> AgentState:
     """
-    High-Efficiency Senior Business Analyst: Strictly limits questioning to 5 essential turns.
+    High-Efficiency Senior Business Analyst: Limits questioning to essential turns
+    and avoids repeating questions.
     """
     if not state.get('user_goal'):
-         return state
+        return state
 
     parser = PydanticOutputParser(pydantic_object=GathererOutput)
-    
-    # Calculate how many questions have already been asked (assistant messages)
+
+    # Track which sections/questions have been asked
+    asked_sections = state.get('asked_sections', set())
+
+    # Only count assistant messages that are actual questions (we assume AI marks them)
     assistant_msgs = [m for m in state['messages'] if m['role'] == 'assistant']
     question_count = len(assistant_msgs)
-    
+
+    last_message = state['messages'][-1]['content']
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are an Elite Senior Business Analyst performing a High-Quality gap analysis. \n"
                    "Project Goal: {goal}. \n"
                    "Previous Info: {gathered_info} \n\n"
                    "STRICT RULES:\n"
-                   "1. **One Question Only**: You MUST ask exactly ONE high-value question per turn. \n"
-                   "2. **Targeted Gap**: Identify the most critical missing detail for the BRD. \n"
-                   "3. **Zero Repetition**: Never ask a question already addressed. \n"
-                   "4. **Smart Stop**: If the user says 'Generate' or 'Enough', set `is_complete=True`. \n"
-                   "Ensure your tone is senior and concise. Current Turn: #{current_count}. \n\n"
-                   "OUTPUT INSTRUCTIONS: You MUST return a valid JSON object matching the schema. Do not include markdown blocks. \n"
-                   "{format_instructions}"),
+                   "1. One Question Only per turn.\n"
+                   "2. Target the most critical missing detail.\n"
+                   "3. Do NOT repeat a question already asked.\n"
+                   "4. Stop if the user says 'Generate' or 'Enough'.\n"
+                   "Current Turn: #{current_count}\n\n"
+                   "OUTPUT INSTRUCTIONS: Return valid JSON matching schema with fields: "
+                   "`new_info` (dict), `next_questions` (list), `is_complete` (bool), `asked_sections` (list)."),
         ("user", "{input}")
     ])
-    
-    chain = prompt | json_llm | parser
-    last_message = state['messages'][-1]['content']
-    
+
+    chain = prompt | json_llm
+
     try:
         result = chain.invoke({
             "goal": state['user_goal'],
             "gathered_info": state.get('gathered_info', {}),
             "current_count": question_count + 1,
             "input": last_message,
+            "asked_sections": list(asked_sections),
             "format_instructions": parser.get_format_instructions()
         })
-        
+
         new_gathered = state.get('gathered_info', {}).copy()
         new_gathered.update(result.new_info)
-        
-        # Calculate completion triggers
-        has_generate_word = "GENERATE" in last_message.upper() or "ENOUGH" in last_message.upper()
-        is_explicit_cmd = len(last_message.split()) < 10
-        user_wants_doc = (has_generate_word and is_explicit_cmd and question_count >= 1) or (has_generate_word and question_count >= 3)
-        
-        # ai_question is the next query to show the user (Strictly one)
-        ai_question = result.next_questions[0] if result.next_questions else ""
-        
-        # WE ARE COMPLETE IF:
-        # 1. User forced it.
-        # 2. We hit the hard limit of 4 questions.
-        # 3. Model says it's done AND we've asked at least 2 questions (3 total).
-        is_complete = user_wants_doc or (question_count >= 4) or (result.is_complete and question_count >= 2)
-        
-        # Final safety: if no questions provided by AI, we must complete
-        if not ai_question and not is_complete:
-             is_complete = True
-             
-        current_missing = [s for s in BRD_SECTIONS if s not in new_gathered]
-        
-        # CRITICAL FIX: To prevent jumping to generator prematurely, 
-        # missing_info MUST NOT be empty if is_complete is False.
-        if not is_complete and not current_missing:
-             current_missing = ["General Requirements"] # Dummy item to hold the state
 
+        # Update asked sections so AI won't repeat
+        new_asked_sections = asked_sections.union(set(result.asked_sections))
+
+        # Determine completion
+        user_forced_stop = any(word in last_message.upper() for word in ["GENERATE", "ENOUGH"])
+        max_questions_reached = question_count >= 5
+        is_complete = user_forced_stop or result.is_complete or max_questions_reached
+
+        # Append next AI question if we are not complete
         new_messages = state['messages']
-        if not is_complete and ai_question:
-             new_messages = state['messages'] + [{"role": "assistant", "content": ai_question}]
+        if not is_complete and result.next_questions:
+            next_question = result.next_questions[0]
+            new_messages = state['messages'] + [{"role": "assistant", "content": next_question}]
+
+        # Determine missing sections
+        current_missing = [s for s in BRD_SECTIONS if s not in new_gathered]
+        if not is_complete and not current_missing:
+            current_missing = []  # No dummy placeholder, stop asking
 
         return {
             **state,
             "gathered_info": new_gathered,
-            "missing_info": current_missing if not is_complete else [],
-            "messages": new_messages
+            "missing_info": current_missing,
+            "messages": new_messages,
+            "asked_sections": new_asked_sections
         }
+
     except Exception as e:
         print(f"Error in gatherer: {e}")
         return state
