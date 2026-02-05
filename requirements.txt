@@ -1,4 +1,3 @@
-python-dotenv
 langgraph
 chainlit
 langchain-google-genai

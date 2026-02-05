@@ -3,6 +3,9 @@ from graph import app_graph
 from schema import AgentState
 from utils import convert_html_to_docx
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Initialize state in session
 @cl.on_chat_start
@@ -33,9 +36,9 @@ async def main(message: cl.Message):
     current_messages = state["messages"] + [{"role": "user", "content": message.content}]
     state["messages"] = current_messages
     
-    # 2. Run the graph with session persistence
+    # 2. Run the graph with session persistence (Asynchronous)
     config = {"configurable": {"thread_id": cl.user_session.get("id")}}
-    res_state = app_graph.invoke(state, config=config)
+    res_state = await app_graph.ainvoke(state, config=config)
     
     # 3. Process result
     cl.user_session.set("state", res_state)
@@ -59,8 +62,9 @@ async def main(message: cl.Message):
         
         draft = res_state.get("draft_html")
         if draft:
-            docx_path = convert_html_to_docx(draft, "generated_brd.docx")
-            filename = os.path.basename(docx_path)
+            session_id = cl.user_session.get("id")
+            filename = f"brd_{session_id[:8]}.docx"
+            docx_path = convert_html_to_docx(draft, filename)
             
             elements = [cl.File(name=filename, path=docx_path, display="inline")]
             await cl.Message(content=f"Here is your document: {filename}. \n\nYou can review it and ask for further changes or type **'Generate Technical Specification'**.", elements=elements).send()
@@ -73,8 +77,9 @@ async def main(message: cl.Message):
         
         ts_content = res_state.get("ts_html")
         if ts_content:
-            ts_path = convert_html_to_docx(ts_content, "technical_specification.docx")
-            filename = os.path.basename(ts_path)
+            session_id = cl.user_session.get("id")
+            filename = f"ts_{session_id[:8]}.docx"
+            ts_path = convert_html_to_docx(ts_content, filename)
             
             elements = [cl.File(name=filename, path=ts_path, display="inline")]
             await cl.Message(content=f"Here is your Technical Specification: {filename}", elements=elements).send()

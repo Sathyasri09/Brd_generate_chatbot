@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
@@ -20,7 +20,7 @@ class RefinedGoal(BaseModel):
 
 # Pydantic model for the "Gatherer" output
 class GathererOutput(BaseModel):
-    new_info: Dict[str, str] = Field(default_factory=dict, description="Information extracted from the last user message, mapped to BRD sections.")
+    new_info: Dict[str, Any] = Field(default_factory=dict, description="Information extracted from the last user message, mapped to BRD sections.")
     next_questions: List[str] = Field(default_factory=list, description="Specific follow-up questions to ask the user.")
     is_complete: bool = Field(default=False, description="True if all necessary information for the BRD has been gathered.")
     should_stop: bool = Field(default=False, description="True if the user explicitly asked to stop and generate the document now.")
